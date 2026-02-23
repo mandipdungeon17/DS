@@ -1,0 +1,162 @@
+1. Difference b/w ExecutorService and CompletableFuture in Java
+Ans ---
+With ExecutorService:
+javaExecutorService pool = Executors.newFixedThreadPool(5);
+List<Future<String>> futures = new ArrayList<>();
+
+for (int i = 0; i < 5; i++) {
+    futures.add(pool.submit(() -> callDatabase()));
+}
+
+// Now what? How do you wait for all and collect results?
+// You'd need a loop with futures.get()...
+
+
+With CompletableFuture:
+javaCompletableFuture<String> task1 = CompletableFuture.supplyAsync(() -> callDatabase());
+CompletableFuture<String> task2 = CompletableFuture.supplyAsync(() -> callDatabase());
+// ... 3 more tasks
+
+CompletableFuture<Void> allTasks = CompletableFuture.allOf(task1, task2, task3, task4, task5);
+allTasks.join(); // Wait for ALL to complete
+But here's the real power - what if you want to do something with the results as they complete, or chain operations together?
+javaCompletableFuture<String> result = CompletableFuture
+    .supplyAsync(() -> callDatabase())
+    .thenApply(data -> processData(data))
+    .thenCompose(processed -> callAnotherService(processed));
+Looking at this chaining example, what do you think happens? Does each step run on the same thread or different threads? And what would equivalent code look like with ExecutorService?
+The key insight: CompletableFuture gives you much more control over composing and combining async operations. Does this help clarify the difference?RetryClaude does not have the ability to run the code it generates yet.Claude can make mistakes. Please double-check responses.
+
+
+
+2. Explain how main thread return results of the worker thread.
+Ans -
+The Shared Future Object
+Both threads have access to the same Future object in memory:
+javapublic class FutureTask<V> implements Future<V> {
+    // These fields are SHARED between both threads
+    private volatile V result;        // The actual result
+    private volatile int state;       // Task state (RUNNING, COMPLETED, etc.)
+
+    // Worker thread writes to these fields
+    // Main thread reads from these fields
+}
+Step-by-Step Flow:
+1. Worker Thread Stores Result:
+java// This runs on WORKER THREAD
+private void set(V result) {
+    this.result = result;           // Worker thread WRITES result here
+    this.state = COMPLETED;         // Worker thread updates state
+
+    synchronized (this) {
+        notifyAll();                // Wake up waiting main thread
+    }
+}
+2. Main Thread Retrieves Result:
+java// This runs on MAIN THREAD after being woken up
+public V get() {
+    synchronized (this) {
+        while (!isDone()) {
+            wait();                 // Main thread was sleeping here
+        }
+        // Main thread wakes up and READS the result
+        return this.result;         // Returns what worker thread wrote
+    }
+}
+Memory Sharing Visualization:
+Memory (Heap):
+┌─────────────────┐
+│   FutureTask    │
+│   ┌─────────┐   │
+│   │ result  │───┼──→ "Task completed" (written by worker)
+│   │ state   │───┼──→ COMPLETED (written by worker)
+│   └─────────┘   │
+└─────────────────┘
+     ↑         ↑
+     │         │
+Worker Thread  Main Thread
+(writes)       (reads)
+The Key Insight:
+The worker thread doesn't return anything directly to the main thread.
+
+Instead:
+Worker thread writes the result to shared memory (the Future object)
+Worker thread calls notifyAll() to wake up the main thread
+Main thread wakes up and reads the result from that same shared memory location
+Main thread's get() method returns what it read
+
+Both threads are accessing the same object in memory - that's how the data gets transferred. The notifyAll() is just the signal that says "hey, the data is ready for you to read now!"
+This is fundamental to how multithreading works in Java - threads share memory space, so they can communicate by reading/writing to the same objects.
+
+
+3. The Thread Distinction:
+Ans :
+   There are actually two separate threads involved:
+
+   Calling Thread (often main thread): The one that calls future.get(timeout)
+   Worker Thread (from thread pool): The one actually executing your task
+
+   java// This happens on the CALLING thread (e.g., main thread)
+   Future<String> future = executor.submit(() -> {
+       // This lambda runs on WORKER thread
+       Thread.sleep(10000);
+       return "Done";
+   });
+
+   // This happens on the CALLING thread
+   String result = future.get(3, TimeUnit.SECONDS); // TimeoutException after 3 sec
+   Who calls wait()?
+   The calling thread calls wait() - not the worker thread! Here's what each thread is doing:
+   Calling Thread:
+   java// Inside future.get(timeout) - runs on calling thread
+   synchronized (futureObject) {
+       while (!isDone()) {
+           wait(timeoutMillis); // CALLING thread waits here
+           if (timeoutExpired()) {
+               throw new TimeoutException(); // CALLING thread throws this
+           }
+       }
+   }
+   Worker Thread:
+   java// Meanwhile, completely separately, worker thread is doing:
+   try {
+       Thread.sleep(10000); // Still sleeping, unaware of timeout
+       // When done, calls futureObject.notifyAll()
+   } finally {
+       // Worker thread signals completion
+       synchronized (futureObject) {
+           notifyAll(); // Wakes up the waiting calling thread
+       }
+   }
+   The worker thread calls notifyAll() when the task completes:
+   java// Inside FutureTask.set() - called when task completes successfully
+   private void set(V result) {
+       this.result = result;
+       this.state = COMPLETED;
+
+       synchronized (this) {
+           notifyAll(); // Wakes up ALL waiting threads
+       }
+   }
+   So when timeout expires:
+
+   Calling thread: Stops waiting, throws TimeoutException, continues with your code
+   Worker thread: Keeps running the original task, completely unaffected
+
+4. Explain .join() vs .get() in Java threads.
+Ans -
+Thread.join(): void - no result returned
+Future.get(): Returns the result with checked exceptions
+CompletableFuture.join(): Returns the result with unchecked exceptions
+
+Thread thread = new Thread(() -> doWork());
+thread.start();
+thread.join(); // Wait for thread to finish, but NO return value
+
+Future<String> future = executor.submit(() -> doWork());
+String result = future.get(); // CHECKED exceptions - must handle
+
+CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> doWork());
+String result = future.join(); // UNCHECKED exceptions - no try-catch needed
+
+Note : Think about the memory hierarchy - you have L1 cache (fastest, private to each core), L2 cache (slower, might be shared), L3 cache (even slower, usually shared), and main RAM (slowest).

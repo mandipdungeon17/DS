@@ -1,0 +1,131 @@
+### Question 1:
+In the `Volatility` class, one thread changes the flag value, but the other thread still gets the old value if the `volatile`
+keyword is not used, causing it to get stuck inside an infinite loop. However, the same is not happening in the `SharedResources` class.
+It's able to read the changing value and execute successfully. How? What's the difference? Can you explain in detail?
+
+### Answer 1:
+The difference between the `Volatility` class and the `SharedResources` class lies in the use of synchronization mechanisms.
+
+#### Volatility Class:
+In the `Volatility` class, the `flag` variable is accessed by multiple threads without any synchronization.
+If the `volatile` keyword is not used, the `flag` variable may be cached by each thread,
+leading to inconsistent views of the variable's value. This can cause one thread to never see the updated value set by another thread,
+resulting in an infinite loop.
+
+#### SharedResources Class:
+In the `SharedResources` class, the `data` and `hasData` variables are accessed within synchronized methods (`produce` and `consume`).
+Synchronization ensures that changes made by one thread are visible to other threads. When a thread enters a synchronized method,
+it acquires the lock on the `SharedResources` object, ensuring that no other thread can enter any synchronized method on the same object
+until the lock is released. This guarantees visibility and ordering of changes to the variables.
+
+#### Detailed Explanation:
+1. **Volatile Keyword**:
+   - The `volatile` keyword ensures that a variable's value is always read from and written to the main memory, preventing threads
+   from caching the variable locally. This ensures visibility of changes across threads.
+
+2. **Synchronization**:
+   - Synchronization not only ensures visibility but also provides mutual exclusion, preventing multiple threads from accessing the
+   synchronized block/method simultaneously. This is achieved by acquiring and releasing locks. When a thread acquires a lock,
+   it flushes its local cache to main memory, ensuring that changes made by other threads are visible. When the lock is released,
+   the local cache is invalidated, forcing the thread to re-read the variable from main memory. This guarantees visibility and
+   ordering of changes.
+
+In summary, the `volatile` keyword ensures visibility of changes to a variable across threads, while synchronization ensures both
+visibility and mutual exclusion, preventing race conditions and ensuring consistent views of shared variables.
+
+### Question 2:
+Could you explain the flow of `Producer` and `Consumer` in detail on how the threads' values change? Which threads acquire
+the method first and then proceed further?
+
+### Answer 2:
+#### Flow Explanation:
+
+1. **Initialization**:
+   - A `SharedResources` object is created.
+   - A `Producer` and a `Consumer` are created, both sharing the same `SharedResources` object.
+   - Two threads are created: one for the `Producer` and one for the `Consumer`.
+
+2. **Starting Threads**:
+   - Both threads are started, which means the `run` method of both `Producer` and `Consumer` will be executed concurrently.
+
+3. **Producer Thread**:
+   - The `Producer` thread enters a loop to produce 10 items.
+   - For each item, it calls the `produce` method of `SharedResources`.
+   - Inside the `produce` method:
+     - The method is synchronized, so the `Producer` thread acquires the lock on the `SharedResources` object.
+     - It checks if `hasData` is `true`. If it is, it waits (releases the lock and waits to be notified).
+     - Once it can proceed, it sets `data` to the current value, sets `hasData` to `true`, prints the produced value,
+     and notifies all waiting threads.
+     - The `Producer` thread releases the lock and proceeds to the next iteration.
+
+4. **Consumer Thread**:
+   - The `Consumer` thread enters a loop to consume 10 items.
+   - For each item, it calls the `consume` method of `SharedResources`.
+   - Inside the `consume` method:
+     - The method is synchronized, so the `Consumer` thread acquires the lock on the `SharedResources` object.
+     - It checks if `hasData` is `false`. If it is, it waits (releases the lock and waits to be notified).
+     - Once it can proceed, it retrieves the `data`, sets `hasData` to `false`, prints the consumed value,
+     and notifies all waiting threads.
+     - The `Consumer` thread releases the lock and proceeds to the next iteration.
+
+#### Thread Interaction:
+- **Synchronization**: The `produce` and `consume` methods are synchronized, ensuring that only one thread can execute either method
+at a time on the same `SharedResources` object.
+- **Waiting and Notifying**:
+  - If the `Producer` tries to produce when `hasData` is `true`, it waits until the `Consumer` consumes the data and sets `hasData` to `false`.
+  - If the `Consumer` tries to consume when `hasData` is `false`, it waits until the `Producer` produces new data and sets `hasData` to `true`.
+- **Lock Acquisition**:
+  - The `Producer` and `Consumer` threads acquire the lock on the `SharedResources` object when entering the synchronized
+  `produce` and `consume` methods, respectively.
+  - They release the lock when they either wait or exit the synchronized method.
+
+This code ensures that the `Producer` and `Consumer` threads coordinate their actions using the `SharedResources` object,
+avoiding race conditions and ensuring proper synchronization.
+
+### Question 3:
+Does this mean that if the lock is acquired on the `produce` method, then the `consumer` will wait until `produce` releases the lock, right?
+It will not even enter inside the method even though there are 2 threads? Also, is this thread independent? Explain in detail.
+
+### Answer 3:
+Yes, you are correct. If the lock is acquired on the `produce` method, the `consumer` thread will wait until the `produce` method
+releases the lock. This is because the `produce` and `consume` methods are synchronized, meaning they are protected by the intrinsic
+lock of the `SharedResources` object.
+
+#### Detailed Explanation:
+
+1. **Synchronization and Locking**:
+   - When a thread enters a synchronized method, it acquires the lock on the object that owns the method
+   (in this case, the `SharedResources` object).
+   - If another thread tries to enter any synchronized method on the same object, it will be blocked until the lock is released.
+
+2. **Thread Interaction**:
+   - If the `Producer` thread is executing the `produce` method, it holds the lock on the `SharedResources` object.
+   - If the `Consumer` thread tries to execute the `consume` method while the `Producer` thread holds the lock, the `Consumer` thread
+   will be blocked and will wait until the `Producer` thread releases the lock.
+
+3. **Thread Independence**:
+   - The threads are independent in the sense that they are separate execution paths. However, their interaction with the shared resource
+   (`SharedResources` object) is dependent on the synchronization mechanism.
+   - The synchronization ensures that only one thread can execute a synchronized method on the shared object at a time,
+   preventing race conditions and ensuring data consistency.
+
+#### Example Scenario:
+
+- **Producer Thread**:
+  - Acquires the lock on `SharedResources`.
+  - Executes the `produce` method.
+  - If `hasData` is `true`, it waits (releases the lock and waits to be notified).
+  - Produces data, sets `hasData` to `true`, and notifies all waiting threads.
+  - Releases the lock.
+
+- **Consumer Thread**:
+  - Tries to acquire the lock on `SharedResources`.
+  - If the `Producer` thread holds the lock, the `Consumer` thread waits.
+  - Once the `Producer` thread releases the lock, the `Consumer` thread acquires it.
+  - Executes the `consume` method.
+  - If `hasData` is `false`, it waits (releases the lock and waits to be notified).
+  - Consumes data, sets `hasData` to `false`, and notifies all waiting threads.
+  - Releases the lock.
+
+This ensures that the `Producer` and `Consumer` threads coordinate their actions properly, avoiding race conditions and ensuring
+data consistency.
