@@ -1,10 +1,10 @@
 package org.systemDesign.creationtionalPattern.builder;
 /*
-## Static vs Non-Static Nested Class Access
+ Static vs Non-Static Nested Class Access
 
-### 1. **Both static and non-static inner classes CAN access private members**
+ 1. Both static and non-static inner classes CAN access private members
 
-A non-static inner class **can also** access the private constructor, methods, and fields. The difference is about **how you instantiate** them:
+A non-static inner class can also access the private constructor, methods, and fields. The difference is about how you instantiate them:
 
 ```java
 // Non-static inner class would require:
@@ -14,9 +14,9 @@ Employee.EmployeeBuilder builder = emp.new EmployeeBuilder();  // Then create in
 
 The problem: You need an `Employee` instance to create the builder, but you need the builder to create an `Employee` — a chicken-and-egg problem.
 
-### 2. **Private Methods and Fields ARE Accessible**
+ 2. Private Methods and Fields ARE Accessible
 
-The builder **can** access all private members of `Employee`. For example, this would work:
+The builder can access all private members of `Employee`. For example, this would work:
 
 ```java
 public Employee build(){
@@ -27,14 +27,14 @@ public Employee build(){
 }
 ```
 
-### 3. **Why It Seems Like Only Constructor Is Used**
+ 3. Why It Seems Like Only Constructor Is Used
 
-In the Builder pattern, you only **need** to call the constructor because:
+In the Builder pattern, you only need to call the constructor because:
 - Fields are set via the constructor parameters
 - The builder holds the data, then passes itself to construct the object
 - No need to access private methods/fields directly
 
-### Summary
+ Summary
 
 | Aspect                            | Static Inner Class | Non-Static Inner Class |
 |--------                           |------------------- |------------------------|
